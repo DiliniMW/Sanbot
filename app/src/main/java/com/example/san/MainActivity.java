@@ -35,6 +35,7 @@ import static com.example.san.MyUtils.sleepy;
 import com.sanbot.opensdk.base.TopBaseActivity;
 import com.sanbot.opensdk.beans.FuncConstant;
 import com.sanbot.opensdk.function.beans.EmotionsType;
+import com.sanbot.opensdk.function.beans.FaceRecognizeBean;
 import com.sanbot.opensdk.function.beans.LED;
 import com.sanbot.opensdk.function.beans.headmotion.LocateAbsoluteAngleHeadMotion;
 import com.sanbot.opensdk.function.beans.headmotion.RelativeAngleHeadMotion;
@@ -42,6 +43,7 @@ import com.sanbot.opensdk.function.beans.wheelmotion.DistanceWheelMotion;
 import com.sanbot.opensdk.function.beans.wheelmotion.NoAngleWheelMotion;
 import com.sanbot.opensdk.function.beans.wing.AbsoluteAngleWingMotion;
 import com.sanbot.opensdk.function.beans.wing.RelativeAngleWingMotion;
+import com.sanbot.opensdk.function.unit.HDCameraManager;
 import com.sanbot.opensdk.function.unit.HardWareManager;
 import com.sanbot.opensdk.function.unit.HeadMotionManager;
 import com.sanbot.opensdk.function.unit.ModularMotionManager;
@@ -52,9 +54,11 @@ import com.sanbot.opensdk.function.unit.WingMotionManager;
 import com.sanbot.opensdk.function.unit.interfaces.hardware.InfrareListener;
 import com.sanbot.opensdk.function.unit.interfaces.hardware.ObstacleListener;
 import com.sanbot.opensdk.function.unit.interfaces.hardware.PIRListener;
+import com.sanbot.opensdk.function.unit.interfaces.media.FaceRecognizeListener;
 import com.sanbot.opensdk.function.unit.interfaces.speech.WakenListener;
 
 import java.util.Calendar;
+import java.util.List;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -66,6 +70,9 @@ public class  MainActivity extends TopBaseActivity {
 
     public static boolean busy = false;
 
+    public static boolean hdcamera = false;
+
+    public static boolean face = false;
     public static boolean detect=false;
     public static boolean irdetect=false;
 
@@ -83,6 +90,7 @@ public class  MainActivity extends TopBaseActivity {
     @BindView(R.id.welcome)
     ImageView welcomeimg2;
 
+    private HDCameraManager hdCameraManager;
     private ModularMotionManager modularMotionManager; //wander
     private HardWareManager hardWareManager;
     private WheelMotionManager wheelMotionManager;
@@ -105,7 +113,7 @@ public class  MainActivity extends TopBaseActivity {
     //hands movements
     //head motion
     LocateAbsoluteAngleHeadMotion locateAbsoluteAngleHeadMotion = new LocateAbsoluteAngleHeadMotion(
-            LocateAbsoluteAngleHeadMotion.ACTION_VERTICAL_LOCK,90,30
+            LocateAbsoluteAngleHeadMotion.ACTION_VERTICAL_LOCK,0,40
     );
 
     DistanceWheelMotion distanceWheelMotionforward= new DistanceWheelMotion(DistanceWheelMotion.ACTION_FORWARD_RUN,4,200);
@@ -116,12 +124,9 @@ public class  MainActivity extends TopBaseActivity {
     NoAngleWheelMotion noAngleWheelMotionleft=new NoAngleWheelMotion(NoAngleWheelMotion.ACTION_LEFT_FORWARD, 5,5000 );
     NoAngleWheelMotion noAngleWheelMotionRight=new NoAngleWheelMotion(NoAngleWheelMotion.ACTION_RIGHT_FORWARD, 5,500);
 
-
     RelativeAngleHeadMotion relativeHeadMotionDOWN = new RelativeAngleHeadMotion(RelativeAngleHeadMotion.ACTION_DOWN, 30);
     RelativeAngleHeadMotion relativeAngleHeadMotionLeft = new RelativeAngleHeadMotion(RelativeAngleHeadMotion.ACTION_LEFT,10);
     RelativeAngleHeadMotion relativeAngleHeadMotionRight = new RelativeAngleHeadMotion(RelativeAngleHeadMotion.ACTION_RIGHT,10);
-
-
     SlidingDrawer simpleSlidingDrawer;
 
     @SuppressLint("MissingInflatedId")
@@ -138,6 +143,7 @@ public class  MainActivity extends TopBaseActivity {
             setContentView(R.layout.activity_main);
             ButterKnife.bind(this);
             speechManager = (SpeechManager) getUnitManager(FuncConstant.SPEECH_MANAGER);
+            hdCameraManager=(HDCameraManager) getUnitManager(FuncConstant.HDCAMERA_MANAGER);
             systemManager = (SystemManager) getUnitManager(FuncConstant.SYSTEM_MANAGER);
             modularMotionManager = (ModularMotionManager) getUnitManager(FuncConstant.MODULARMOTION_MANAGER);
             hardWareManager = (HardWareManager) getUnitManager(FuncConstant.HARDWARE_MANAGER);
@@ -178,6 +184,8 @@ public class  MainActivity extends TopBaseActivity {
             obstacle=false;
             pirdetect=false;
             obstacle2=false;
+            face=false;
+            hdcamera=false;
 
             busy = false;
             //LOAD handshakes stats
@@ -218,8 +226,8 @@ public class  MainActivity extends TopBaseActivity {
                 }
             });
 
-            initHardwareListeners();
-
+            headMotionManager.doAbsoluteLocateMotion(locateAbsoluteAngleHeadMotion);
+            hdcameralistner();
             //wanderOnNow();
             //initHardwareListeners();
             //initialize body
@@ -230,8 +238,6 @@ public class  MainActivity extends TopBaseActivity {
                     //hands down
                     AbsoluteAngleWingMotion absoluteAngleWingMotion = new AbsoluteAngleWingMotion(AbsoluteAngleWingMotion.PART_BOTH, 8, 180);
                     wingMotionManager.doAbsoluteAngleMotion(absoluteAngleWingMotion);
-                    //head up
-                    headMotionManager.doAbsoluteLocateMotion(locateAbsoluteAngleHeadMotion);
                     //initially sets the wander to on
                 }
             }, 1000);
@@ -265,33 +271,32 @@ public class  MainActivity extends TopBaseActivity {
     }
 
 
+    public void hdcameralistner() {
 
-    public void initobstaclelistner(){
-        if (obstacle==false) {
 
-            hardWareManager.setOnHareWareListener(new ObstacleListener() {
-                    @Override
-                    public void onObstacleStatus ( boolean b){
-                    if (b && detect == false) {
-                       // wanderOffNow();
+        if (hdcamera == false) {
+            hdCameraManager.setMediaListener(new FaceRecognizeListener() {
+                @Override
+                public void recognizeResult(List<FaceRecognizeBean> list) {
+                    if(face==false) {
                         welcome.setVisibility(View.VISIBLE);
                         welcomeimg2.setVisibility(View.INVISIBLE);
                         mediaPlayer.start();
                         //hand up
+                        //up the head
+                        headMotionManager.doAbsoluteLocateMotion(locateAbsoluteAngleHeadMotion);
+                        //hand up
                         AbsoluteAngleWingMotion absoluteAngleWingMotion = new AbsoluteAngleWingMotion(handAb, 5, 70);
                         wingMotionManager.doAbsoluteAngleMotion(absoluteAngleWingMotion);
-                        //rotate body
-                        rotateAtRelativeAngle(wheelMotionManager, 350);
                         //rotate head
                         headMotionManager.doRelativeAngleMotion(relativeAngleHeadMotionRight);
 
-                        obstacle = true;
-                        detect = true;
+                        face = true;
+                        hdcamera = true;
 
                         Toast.makeText(MainActivity.this, "Smiling", Toast.LENGTH_SHORT).show();
                         systemManager.showEmotion(EmotionsType.SMILE);
                         //say hi
-
 
                         pirdetect = true;
 
@@ -313,111 +318,17 @@ public class  MainActivity extends TopBaseActivity {
                         }, 4000);
 
 
-                    } else {
                     }
                 }
-
             });
-            }
 
 
-
+        }
     }
 
 
 
 
-    private void initHardwareListeners() {
-
-        hardWareManager.setOnHareWareListener(new PIRListener() {
-            @Override
-            public void onPIRCheckResult(boolean isCheck, int part) {
-
-                if (pirdetect == false) {
-
-
-                    if (part == 1 && isCheck == true) {
-
-                        welcome.setVisibility(View.VISIBLE);
-
-                        //wanderOffNow();
-
-                        //starts greeting with this person passing
-                        busy = true;
-                        Toast.makeText(MainActivity.this, "Smiling", Toast.LENGTH_SHORT).show();
-                        systemManager.showEmotion(EmotionsType.SMILE);
-                        //say hi
-
-                        mediaPlayer.start();
-
-
-                        pirdetect=true;
-
-
-                        delayHandler.postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-
-                                try {
-                                    Intent intent = new Intent(MainActivity.this, HandShake.class);
-                                    startActivity(intent);
-                                    mediaPlayer.stop();
-                                    finish();
-                                }catch(Exception e){
-                                    Toast.makeText(MainActivity.this, e.toString(), Toast.LENGTH_LONG).show();
-                                }
-                            }
-                        }, 3000);
-
-                    } else if (part != 1 && isCheck == true) {
-
-                        welcome.setVisibility(View.VISIBLE);
-                        wanderOffNow();
-                        Toast.makeText(getApplicationContext(), "you are behind me", Toast.LENGTH_LONG).show();
-                        //if it's the back PIR
-                        Log.i(TAG, "PIR back triggered -> rotating");
-                        MySettings.setSoundRotationAllowed(true);
-
-                        mediaPlayer.start();
-                        //flicker led
-                        hardWareManager.setLED(new LED(LED.PART_ALL, LED.MODE_FLICKER_RED));
-                        //rotate at angle
-                        rotateAtRelativeAngle(wheelMotionManager, 180);
-
-                        //starts greeting with this person passing
-                        busy = true;
-                        Toast.makeText(MainActivity.this, "Smiling", Toast.LENGTH_SHORT).show();
-                        systemManager.showEmotion(EmotionsType.SMILE);
-                        //say hi
-
-                        pirdetect=true;
-
-                        delayHandler.postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                try {
-                                    Intent intent = new Intent(MainActivity.this, HandShake.class);
-                                    startActivity(intent);
-                                    mediaPlayer.stop();
-                                    finish();
-                                }catch(Exception e){
-                                    Toast.makeText(MainActivity.this, e.toString(), Toast.LENGTH_SHORT).show();
-                                }
-                            }
-                        }, 3000);
-
-
-                    } else {
-                        wanderOnNow();
-                        systemManager.showEmotion(EmotionsType.WHISTLE);
-
-
-                    }
-                }
-            }
-        });
-
-    }
 
 
 
@@ -460,24 +371,6 @@ public class  MainActivity extends TopBaseActivity {
     }
 
 
-    public void obstacleStatusForward() {
-        if (!find) {
-            find=true;
-            hardWareManager.setOnHareWareListener(new ObstacleListener() {
-                @Override
-                public void onObstacleStatus(boolean b) {
-                    if (b) {
-                        Toast.makeText(MainActivity.this, "Obstacle detected", Toast.LENGTH_SHORT).show();
-                        distanceStop();
-                        systemManager.showEmotion(EmotionsType.WHISTLE);
-                        hardWareManager.setLED(new LED(LED.PART_ALL, LED.MODE_BLUE));
-                    } else {
-                        distanceForward();
-                    }
-                }
-            });
-        }
-    }
 
 
 
@@ -520,69 +413,6 @@ public class  MainActivity extends TopBaseActivity {
     }
 
 
-    public void initirlistner(){
-
-        if(!irdetect) {
-            hardWareManager.setOnHareWareListener(new InfrareListener() {
-                @Override
-                public void infrareDistance(int i, int i1) {
-                    if (!irdetect) {
-                        if (i == 11 || i == 12 || i == 15 || i == 13 || i == 17) {
-                            if (i1 < 40) {
-
-                                wanderOffNow();
-
-                                //starts greeting with this person passing
-                                busy = true;
-                                Toast.makeText(MainActivity.this, "Smiling", Toast.LENGTH_SHORT).show();
-                                systemManager.showEmotion(EmotionsType.SMILE);
-                                //say hi
-
-                                speechManager.startSpeak(getString(R.string.Welcome_to_Techno_2023_We_are_glad_that_you_are_here), MySettings.getSpeakDefaultOption());
-                                concludeSpeak(speechManager);
-
-
-                                // 50% say Good morning/afternoon/ecc...
-                                double random_num = Math.random();
-                                Log.i(TAG, "Random = " + random_num);
-                                if (random_num < 0.5) {
-                                    int hours = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-                                    if (hours < 6) {
-                                        speechManager.startSpeak(getString(R.string.Top_of_the_morning_to_you), MySettings.getSpeakDefaultOption());
-                                    } else if (hours < 12) {
-                                        speechManager.startSpeak(getString(R.string.Good_Morning), MySettings.getSpeakDefaultOption());
-                                    } else if (hours < 16) {
-                                        speechManager.startSpeak(getString(R.string.Good_Afternoon), MySettings.getSpeakDefaultOption());
-                                    } else if (hours < 19) {
-                                        speechManager.startSpeak(getString(R.string.Good_Evening), MySettings.getSpeakDefaultOption());
-                                    }
-                                    concludeSpeak(speechManager);
-                                }
-
-                                irdetect = true;
-                                Intent intent = new Intent(MainActivity.this, HandShake.class);
-                                startActivity(intent);
-                                finish();
-                                hardWareManager.setOnHareWareListener(null);
-
-                            } else {
-                                wanderOnNow();
-                                systemManager.showEmotion(EmotionsType.WHISTLE);
-
-                            }
-                        } else {
-                            wanderOnNow();
-                            systemManager.showEmotion(EmotionsType.WHISTLE);
-
-                        }
-
-                    }
-                }
-            });
-
-        }
-
-    }
 
 
 }
